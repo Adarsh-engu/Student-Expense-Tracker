@@ -31,7 +31,7 @@ export default function Dashboard() {
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState('Food');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]); 
-
+  const [mlPrediction, setMlPrediction] = useState(0);
   const [budget, setBudget] = useState(() => localStorage.getItem('budget') || 6700);
   const [isEditingBudget, setIsEditingBudget] = useState(false);
   const [csvFile, setCsvFile] = useState(null);

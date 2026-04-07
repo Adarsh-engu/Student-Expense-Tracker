@@ -1,57 +1,44 @@
 import pandas as pd
+import sqlite3
 import numpy as np
 from sklearn.linear_model import LinearRegression
-import calendar
 
-def generate_spending_forecast(expenses_raw):
-    """
-    Takes a list of sqlite3.Row objects and returns a 
-    formatted forecast array for Recharts.
-    """
-    if not expenses_raw or len(expenses_raw) < 5:
-        return []
+def train_and_predict(user_id):
+    try:
+        # 1. Load data from your SQLite DB
+        conn = sqlite3.connect('expenses.db')
+        query = f"SELECT date, amount FROM expenses WHERE user_id = {user_id}"
+        df = pd.read_sql_query(query, conn)
+        conn.close()
 
-    # 1. Prepare Data
-    df = pd.DataFrame(expenses_raw, columns=['date', 'amount'])
-    df['date'] = pd.to_datetime(df['date'])
-    df['YearMonth'] = df['date'].dt.to_period('M')
-    
-    monthly_totals = df.groupby('YearMonth')['amount'].sum().reset_index()
-    monthly_totals = monthly_totals.sort_values('YearMonth')
+        if df.empty or len(df) < 10:
+            return 2500.0  # Fallback dummy value if not enough data
 
-    if len(monthly_totals) < 2:
-        return []
+        # 2. Pre-process: Group by Month
+        df['date'] = pd.to_datetime(df['date'])
+        # Create a 'Month Index' (e.g., Month 1, Month 2...) for the model to understand
+        df['month_year'] = df['date'].dt.to_period('M')
+        monthly_summary = df.groupby('month_year')['amount'].sum().reset_index()
+        
+        # We need at least 2 months to draw a line!
+        if len(monthly_summary) < 2:
+            return round(float(monthly_summary['amount'].iloc[0]), 2)
 
-    # 2. Train Linear Regression Model
-    X = np.arange(len(monthly_totals)).reshape(-1, 1)
-    y = monthly_totals['amount'].values
-    model = LinearRegression()
-    model.fit(X, y)
+        monthly_summary['month_index'] = np.arange(len(monthly_summary)).reshape(-1, 1)
 
-    # 3. Predict (Past + 2 Months Future)
-    future_months = 2
-    X_all = np.arange(len(monthly_totals) + future_months).reshape(-1, 1)
-    predictions = model.predict(X_all)
+        # 3. Train the Linear Regression Model
+        X = monthly_summary[['month_index']] # Features (Time)
+        y = monthly_summary['amount']        # Target (Spend)
+        
+        model = LinearRegression()
+        model.fit(X, y)
 
-    # 4. Format for Frontend
-    forecast_data = []
-    # Add Historical + AI Best Fit
-    for i, row in monthly_totals.iterrows():
-        period = row['YearMonth']
-        forecast_data.append({
-            "month": f"{calendar.month_abbr[period.month]} '{str(period.year)[-2:]}",
-            "actual": round(float(row['amount']), 2),
-            "predicted": round(float(predictions[i]), 2)
-        })
+        # 4. Predict for the NEXT month
+        next_month = np.array([[len(monthly_summary)]])
+        prediction = model.predict(next_month)
 
-    # Add Future Predictions
-    last_period = monthly_totals.iloc[-1]['YearMonth']
-    for i in range(1, future_months + 1):
-        future_period = last_period + i
-        forecast_data.append({
-            "month": f"{calendar.month_abbr[future_period.month]} '{str(future_period.year)[-2:]}",
-            "actual": None, 
-            "predicted": round(float(predictions[len(monthly_totals) - 1 + i]), 2)
-        })
+        return round(float(prediction[0]), 2)
 
-    return forecast_data
+    except Exception as e:
+        print(f"🤖 ML Error: {e}")
+        return 0.0

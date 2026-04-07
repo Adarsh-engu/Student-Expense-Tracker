@@ -1,7 +1,7 @@
 from flask import Blueprint, request, jsonify
 import pandas as pd
 from utils import get_db_connection 
-
+from machine import train_and_predict
 expenses_bp = Blueprint('expenses', __name__)
 
 @expenses_bp.route('/api/add-expense', methods=['POST'])
@@ -47,3 +47,8 @@ def get_expenses(user_id):
         return jsonify({"status": "success", "expenses": [dict(exp) for exp in expenses]}), 200
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
+@expenses_bp.route('/api/predict/<int:user_id>', methods=['GET'])
+def get_prediction(user_id):
+    # This is the bridge between React and your ML Model
+    val = train_and_predict(user_id)
+    return jsonify({"status": "success", "prediction": val})
