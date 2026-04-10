@@ -9,15 +9,6 @@ import './Dashboard.css';
 
 const COLORS = ['#00ff9d', '#14b8a6', '#3b82f6', '#8b5cf6', '#ef4444', '#f59e0b'];
 
-// The AI is back! (Dummy Data)
-const mlForecastData = [
-  { month: 'Jan', actual: 2000, predicted: 2100 },
-  { month: 'Feb', actual: 2400, predicted: 2300 },
-  { month: 'Mar', actual: 2150, predicted: 2200 },
-  { month: 'Apr', actual: null, predicted: 2500 },
-  { month: 'May', actual: null, predicted: 2350 }
-];
-
 export default function Dashboard() {
   const navigate = useNavigate();
 
@@ -50,8 +41,14 @@ export default function Dashboard() {
 
   const fetchDashboardData = async (userId) => {
     try {
-      const res = await axios.get(`http://127.0.0.1:5000/api/get-expenses/${userId}`);
-      setTransactions(res.data.expenses); 
+      // 1. Fetch historical expenses
+      const expenseRes = await axios.get(`http://127.0.0.1:5000/api/get-expenses/${userId}`);
+      setTransactions(expenseRes.data.expenses); 
+      
+      // 2. Fetch the ML Prediction from your Scikit-Learn model
+      const mlRes = await axios.get(`http://127.0.0.1:5000/api/predict/${userId}`);
+      setMlPrediction(mlRes.data.prediction);
+
     } catch (error) {
       console.error("Connection failed", error);
     }
@@ -191,6 +188,53 @@ export default function Dashboard() {
     // Format label like "May '25"
     monthlyData.push({ label: `${monthNames[targetM]} '${targetY.toString().slice(-2)}`, amount: mTotal });
   }
+  // ==========================================
+  // 🤖 DYNAMIC ML CHART DATA 
+  // ==========================================
+  const dynamicForecastData = React.useMemo(() => {
+    if (!transactions || transactions.length === 0) return [];
+
+    // 1. Group past transactions by month
+    const monthlyTotals = {};
+    transactions.forEach(tx => {
+      const d = new Date(tx.date);
+      // Create a unique key for sorting (e.g., "2026-3")
+      const sortKey = `${d.getFullYear()}-${d.getMonth()}`; 
+      const monthLabel = d.toLocaleString('en-US', { month: 'short' }); 
+
+      if (!monthlyTotals[sortKey]) {
+        monthlyTotals[sortKey] = { month: monthLabel, total: 0, dateObj: d };
+      }
+      monthlyTotals[sortKey].total += tx.amount;
+    });
+
+    // 2. Sort chronologically and grab the last 4 months of history
+    const sortedHistory = Object.values(monthlyTotals)
+      .sort((a, b) => a.dateObj - b.dateObj)
+      .slice(-4);
+
+    // 3. Format for Recharts
+    const chartData = sortedHistory.map(item => ({
+      month: item.month,
+      actual: item.total,
+      predicted: item.total // Traces the actual line exactly for past months
+    }));
+
+    // 4. Append the Machine Learning Prediction for the NEXT month
+    if (chartData.length > 0) {
+      const lastDate = sortedHistory[sortedHistory.length - 1].dateObj;
+      const nextMonthDate = new Date(lastDate.getFullYear(), lastDate.getMonth() + 1, 1);
+      const nextMonthLabel = nextMonthDate.toLocaleString('en-US', { month: 'short' });
+
+      chartData.push({
+        month: nextMonthLabel,
+        actual: null, // No actual spending yet!
+        predicted: mlPrediction // 🧠 Your Scikit-Learn output
+      });
+    }
+
+    return chartData;
+  }, [transactions, mlPrediction]);
 
   // SWITCHER
   let activeTrendData = dailyData;
@@ -233,9 +277,12 @@ export default function Dashboard() {
           )}
         </div>
 
-        <div className="kpi-card" style={{ border: '1px solid #00ff9d' }}>
+        <div className="kpi-card" style={{ border: '1px solid #8b5cf6' }}>
           <div className="kpi-title">🤖 ML Predicted Next Month</div>
-          <div className="kpi-value neon-green">₹2,500</div>
+          {/* Now displaying the real prediction from machine.py! */}
+          <div className="kpi-value" style={{ color: '#8b5cf6' }}>
+            ₹{mlPrediction.toLocaleString('en-IN')}
+          </div>
         </div>
       </div>
 
@@ -299,14 +346,14 @@ export default function Dashboard() {
         <div className="chart-card" style={{ borderTop: '2px solid #8b5cf6' }}>
           <h3>🤖 AI Expense Forecast</h3>
           <ResponsiveContainer width="100%" height="80%">
-            <AreaChart data={mlForecastData}>
+            <AreaChart data={dynamicForecastData}>
               <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
               <XAxis dataKey="month" stroke="#94a3b8" />
               <YAxis stroke="#94a3b8" />
               <Tooltip contentStyle={{ backgroundColor: '#0f172a', border: 'none', borderRadius: '8px' }} />
               <Legend />
-              <Area type="monotone" dataKey="actual" stroke="#14b8a6" fill="#14b8a6" fillOpacity={0.3} name="Past Actuals" />
-              <Area type="monotone" dataKey="predicted" stroke="#8b5cf6" strokeDasharray="5 5" fill="#8b5cf6" fillOpacity={0.1} name="ML Projection" />
+              <Area type="monotone" dataKey="actual" stroke="#14b8a6" fill="#14b8a6" fillOpacity={0.3} name="Past Actuals" connectNulls/>
+              <Area type="monotone" dataKey="predicted" stroke="#8b5cf6" strokeDasharray="5 5" fill="#8b5cf6" fillOpacity={0.1} name="ML Projection" connectNulls />
             </AreaChart>
           </ResponsiveContainer>
         </div>
