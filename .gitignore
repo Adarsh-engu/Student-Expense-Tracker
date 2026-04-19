@@ -1,5 +1,11 @@
+# Python Backend
 .venv/
 __pycache__/
-*.db
-node_modules/
+expenses.db
+
+# React Frontend
+frontend/node_modules/
+frontend/dist/
+
+# System Files
 .DS_Store
