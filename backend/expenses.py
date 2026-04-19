@@ -50,5 +50,28 @@ def get_expenses(user_id):
 @expenses_bp.route('/api/predict/<int:user_id>', methods=['GET'])
 def get_prediction(user_id):
     # This is the bridge between React and your ML Model
-    val = train_and_predict(user_id)
-    return jsonify({"status": "success", "prediction": val})
+    vals = train_and_predict(user_id)
+    return jsonify({"status": "success", "predictions": vals})
+@expenses_bp.route('/api/report/<int:user_id>', methods=['GET'])
+def generate_report(user_id):
+    # Grabbing dates from the query string (e.g., ?start=2026-03-01&end=2026-03-31)
+    start_date = request.args.get('start')
+    end_date = request.args.get('end')
+    
+    try:
+        conn = get_db_connection()
+        query = '''
+            SELECT * FROM expenses 
+            WHERE user_id = ? AND date BETWEEN ? AND ? 
+            ORDER BY date ASC
+        '''
+        expenses = conn.execute(query, (user_id, start_date, end_date)).fetchall()
+        conn.close()
+        total_spent = sum([exp['amount'] for exp in expenses])
+        return jsonify({
+            "status": "success", 
+            "expenses": [dict(exp) for exp in expenses],
+            "total": total_spent
+        }), 200
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500

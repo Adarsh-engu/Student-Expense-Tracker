@@ -33,12 +33,17 @@ def train_and_predict(user_id):
         model = LinearRegression()
         model.fit(X, y)
 
-        # 4. Predict for the NEXT month
-        next_month = np.array([[len(monthly_summary)]])
-        prediction = model.predict(next_month)
+        # 4. Predict for the NEXT 3 months directly in Python!
+        future_months = np.array([
+            [len(monthly_summary)],      # Month 1 (April)
+            [len(monthly_summary) + 1],  # Month 2 (May)
+            [len(monthly_summary) + 2]   # Month 3 (June)
+        ])
+        predictions = model.predict(future_months)
 
-        return round(float(prediction[0]), 2)
+        # Return a list of the 3 predictions
+        return [round(float(p), 2) for p in predictions]
 
     except Exception as e:
         print(f"🤖 ML Error: {e}")
-        return 0.0
+        return [0.0, 0.0, 0.0] # Fallback array if it crashes
